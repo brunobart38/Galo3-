@@ -1,0 +1,34 @@
+# GALO 3 — pronto para publicar
+
+A configuração Firebase já está preenchida com os dados enviados.
+
+## Publicar (num computador)
+1. Descarrega e descomprime este ZIP.
+2. Instala Node.js: https://nodejs.org/
+3. Abre Terminal/PowerShell dentro da pasta descomprimida.
+4. Executa:
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase init hosting
+```
+
+5. Escolhe o projeto existente `galo-linha38`.
+6. Quando perguntar a pasta pública, escreve `public`.
+7. Se perguntar se é uma single-page app, responde `No` (as regras de rewrite já estão no firebase.json). Se o assistente substituir o ficheiro, mantém o `firebase.json` incluído neste ZIP.
+8. Executa:
+
+```bash
+firebase deploy
+```
+
+O Firebase mostrará o endereço `https://...web.app`. Envia esse link pelo WhatsApp.
+
+## Já configurado no Firebase
+- Authentication anónima (ativada pelo utilizador)
+- Realtime Database europeia
+- URL da base de dados preenchido na aplicação
+
+## Nota de privacidade
+O código da sala é aleatório e o link deve ser partilhado apenas com o adversário. As regras atuais permitem acesso a utilizadores autenticados que conheçam o caminho da sala; não constituem controlo de acesso robusto por membro.

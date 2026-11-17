@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>GALO 3 — Jogo do Galo</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#f7f8fb;background:#101827}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:18px}
+main{width:min(100%,440px);background:#1b2738;border:1px solid #334155;border-radius:24px;padding:22px;box-shadow:0 18px 50px #0005}
+h1{text-align:center;font-size:2.2rem;letter-spacing:.12em;margin:0}.sub{text-align:center;color:#aab7c8;margin:4px 0 20px}
+.panel{background:#111c2b;border-radius:16px;padding:14px;margin:12px 0}
+button,input{font:inherit;border-radius:12px;padding:12px;border:1px solid #46566c}
+button{background:#e9f0fa;color:#142033;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}
+input{background:#0d1725;color:white;width:100%;margin:6px 0}
+.primary{width:100%;background:#a7f3d0}.secondary{width:100%;margin-top:8px}
+.status{text-align:center;font-weight:700;font-size:1.05rem;min-height:28px}
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:16px 0}
+.cell{aspect-ratio:1;background:#26364b;border:1px solid #40536c;border-radius:15px;font-size:2.6rem;font-weight:800;display:grid;place-items:center;color:white}
+.cell.x{color:#86efac}.cell.o{color:#93c5fd}.cell.selected{outline:3px solid #facc15}
+.small{font-size:.88rem;color:#b9c5d4;text-align:center;line-height:1.5}
+.hidden{display:none!important}.row{display:flex;gap:8px}.row>*{flex:1}
+a{color:#a7f3d0;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+<h1>GALO 3</h1><div class="sub">Três peças. Uma linha. Um vencedor.</div>
+<section id="home">
+ <div class="panel">
+  <button class="primary" id="create">Criar sala privada</button>
+  <p class="small">Cria uma sala e envia o link secreto ao teu adversário pelo WhatsApp.</p>
+ </div>
+ <div class="panel">
+  <label for="roomCode">Já tens um código de sala?</label>
+  <input id="roomCode" placeholder="Introduz o código">
+  <button class="secondary" id="join">Entrar na sala</button>
+ </div>
+ <p class="small">Não precisas de criar conta. O jogo usa uma ligação privada partilhada por convite.</p>
+</section>
+<section id="game" class="hidden">
+ <div class="panel">
+  <div class="small">SALA PRIVADA</div>
+  <div class="status" id="roomLabel"></div>
+  <div class="row"><button id="copy">Copiar convite</button><button id="share">WhatsApp</button></div>
+ </div>
+ <div class="status" id="status">A ligar...</div>
+ <div class="board" id="board"></div>
+ <div class="row small"><div id="xCount">X: 0/3</div><div id="oCount">O: 0/3</div></div>
+ <p class="small" id="hint">À espera do adversário...</p>
+ <button class="secondary" id="newGame">Nova partida</button>
+ <button class="secondary" id="leave">Sair da sala</button>
+</section>
+<div class="small" style="margin-top:16px">GALO 3 · Joga com amigos</div>
+</main>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, update, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+/* 1) Substitui os valores abaixo pelos dados da tua aplicação Firebase. */
+const firebaseConfig = {
+  apiKey: "AIzaSyDsjFzeUtfhUVyZniU4FWvwG18IOBP6FDk",
+  authDomain: "galo-linha38.firebaseapp.com",
+  databaseURL: "https://galo-linha38-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "galo-linha38",
+  storageBucket: "galo-linha38.firebasestorage.app",
+  messagingSenderId: "555798894761",
+  appId: "1:555798894761:web:63bcfb08312297c2be31b8"
+};
+
+const $ = id => document.getElementById(id);
+const app = initializeApp(firebaseConfig), db = getDatabase(app), auth = getAuth(app);
+let uid=null, room=null, myMark=null, game=null, unsubscribe=null, selected=-1;
+const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const randomCode=()=>Array.from(crypto.getRandomValues(new Uint8Array(7)),x=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[x%32]).join("");
+const roomRef=()=>ref(db,"rooms/"+room);
+const invite=()=>location.origin+location.pathname+"?room="+room;
+async function login(){if(firebaseConfig.apiKey.startsWith("COLOCA"))throw Error("Falta configurar o Firebase. Segue o guia README.");const cred=await signInAnonymously(auth);uid=cred.user.uid;}
+function showGame(){ $("home").classList.add("hidden");$("game").classList.remove("hidden");$("roomLabel").textContent=room; }
+function render(){
+ if(!game)return;
+ const board=$("board");board.innerHTML="";
+ game.board.forEach((v,i)=>{const b=document.createElement("button");b.className="cell "+(v?v.toLowerCase():"")+(selected===i?" selected":"");b.textContent=v||"·";b.onclick=()=>play(i);board.appendChild(b);});
+ const x=game.board.filter(v=>v==="X").length,o=game.board.filter(v=>v==="O").length;
+ $("xCount").textContent=`X: ${x}/3`; $("oCount").textContent=`O: ${o}/3`;
+ const win=wins.find(line=>line.every(i=>game.board[i] && game.board[i]===game.board[line[0]]));
+ if(win){$("status").textContent=`🏆 ${game.board[win[0]]} venceu!`; $("hint").textContent="Três em linha! Podes iniciar uma nova partida.";}
+ else if(!game.players?.O){$("status").textContent=`És ${myMark}. À espera do segundo jogador…`; $("hint").textContent="Partilha o convite para o teu adversário entrar.";}
+ else {$("status").textContent=game.turn===myMark?`A tua vez (${myMark})`:`Vez de ${game.turn}`;$("hint").textContent=(x<3||o<3)?"Coloca as tuas peças alternadamente.":"Seleciona uma das tuas peças e depois uma casa vazia.";}
+}
+async function createRoom(){
+ await login(); room=randomCode();myMark="X";
+ const initial={board:Array(9).fill(""),turn:"X",players:{X:uid},createdAt:Date.now()};
+ await set(roomRef(),initial);showGame();listen();
+}
+async function joinRoom(code){
+ await login();room=code.toUpperCase().trim();if(!room)throw Error("Introduz o código da sala.");
+ const snap=await get(roomRef());if(!snap.exists())throw Error("Sala não encontrada. Confirma o código.");
+ const data=snap.val();
+ if(data.players?.X===uid)myMark="X";
+ else if(data.players?.O===uid)myMark="O";
+ else if(!data.players?.O){myMark="O";await update(roomRef(),{ "players/O":uid });}
+ else throw Error("Esta sala já tem dois jogadores.");
+ showGame();listen();
+}
+function listen(){if(unsubscribe)unsubscribe();unsubscribe=onValue(roomRef(),s=>{if(!s.exists()){ $("status").textContent="Sala encerrada.";return;}game=s.val();selected=-1;render();});}
+async function play(i){
+ if(!game||!myMark||game.players?.O==null||game.turn!==myMark)return;
+ const win=wins.find(line=>line.every(j=>game.board[j]&&game.board[j]===game.board[line[0]]));if(win)return;
+ const result=await runTransaction(roomRef(),data=>{
+  if(!data||data.turn!==myMark)return;
+  const b=[...data.board], count=b.filter(v=>v===myMark).length;
+  if(count<3){if(b[i])return;b[i]=myMark;}
+  else {if(selected<0||b[selected]!==myMark||b[i])return;b[selected]="";b[i]=myMark;}
+  data.board=b;data.turn=myMark==="X"?"O":"X";return data;
+ });
+ if(!result.committed){if(game.board.filter(v=>v===myMark).length>=3&&selected<0&&game.board[i]===myMark)selected=i;else selected=-1;render();}
+ else selected=-1;
+}
+$("create").onclick=()=>createRoom().catch(e=>alert(e.message));
+$("join").onclick=()=>joinRoom($("roomCode").value).catch(e=>alert(e.message));
+$("copy").onclick=async()=>{await navigator.clipboard.writeText(invite());alert("Convite copiado!");};
+$("share").onclick=()=>{const msg=encodeURIComponent("Vem jogar GALO 3 comigo! "+invite());location.href="https://wa.me/?text="+msg;};
+$("newGame").onclick=async()=>{if(!confirm("Começar uma nova partida?"))return;await runTransaction(roomRef(),d=>{if(!d)return;d.board=Array(9).fill("");d.turn="X";return d;});};
+$("leave").onclick=()=>{if(unsubscribe)unsubscribe();location.href=location.pathname;};
+const params=new URLSearchParams(location.search);if(params.get("room")){$("roomCode").value=params.get("room");joinRoom(params.get("room")).catch(e=>alert(e.message));}
+</script>
+</body></html>
